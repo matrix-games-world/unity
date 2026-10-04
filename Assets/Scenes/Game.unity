@@ -373,7 +373,7 @@ MonoBehaviour:
   targetCamera: {fileID: 0}
   board: {fileID: 0}
   minOrthographicSize: 4.5
-  maxOrthographicSize: 9
+  maxOrthographicSize: 12
   mouseWheelZoomSpeed: 0.9
   pinchZoomSpeed: 0.012
   fitPadding: 0.35
@@ -677,9 +677,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 53c1a131007ca914782655d6c3666844, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GridRenderer
-  width: 12
-  height: 12
-  spacing: 0.4
+  width: 24
+  height: 24
+  spacing: 0.5
   dotSize: 0.01
   dotColor: {r: 0.75, g: 0.75, b: 0.75, a: 1}
 --- !u!1 &1231063920
@@ -726,8 +726,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9c0cba1820fbe614396d6f68e8cd128b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PuzzleBoard
-  width: 12
-  height: 12
+  width: 24
+  height: 24
   spacing: 0.5
   startingLives: 3
 --- !u!1 &1337851510
@@ -825,8 +825,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 53c1a131007ca914782655d6c3666844, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GridRenderer
-  width: 12
-  height: 12
+  width: 24
+  height: 24
   spacing: 0.5
   dotSize: 0.4
   dotColor: {r: 0.46226418, g: 0.46226418, b: 0.46226418, a: 1}
