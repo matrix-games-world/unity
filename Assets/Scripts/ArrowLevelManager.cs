@@ -66,9 +66,16 @@ public class ArrowLevelManager : MonoBehaviour
             return;
         }
 
+        board.ConfigureBoard(
+            level.width,
+            level.height,
+            level.spacing
+        );
+
         ClearSpawnedArrows();
         board.ResetBoard();
         board.SetLivesForLevel(level.lives);
+        RefreshBoardPresentation(level);
 
         ArrowPathController sourcePrefab = GetLevelArrowPrefab(level);
 
@@ -82,18 +89,35 @@ public class ArrowLevelManager : MonoBehaviour
             return;
         }
 
+        HashSet<Vector2Int> claimedCells =
+            new HashSet<Vector2Int>();
+
         if (level.arrows != null)
         {
             for (int i = 0; i < level.arrows.Count; i++)
             {
                 ArrowData data = level.arrows[i];
 
-                if (data == null || data.path == null || data.path.Count < 2)
+                if (!IsLevelPathValid(
+                        data != null ? data.path : null,
+                        level.width,
+                        level.height,
+                        claimedCells))
+                {
+                    Debug.LogError(
+                        "ArrowLevelManager: Skipping arrow " + i +
+                        " because its path is invalid, outside the level, or overlaps another arrow."
+                    );
                     continue;
+                }
 
                 SpawnArrow(sourcePrefab, level, data);
             }
         }
+
+        BoardPanZoom zoom = FindFirstObjectByType<BoardPanZoom>();
+        if (zoom != null)
+            zoom.FitBoard();
 
         Debug.Log(
             "ArrowLevelManager: Loaded level " +
@@ -104,6 +128,64 @@ public class ArrowLevelManager : MonoBehaviour
         );
 
         loadingLevel = false;
+    }
+
+    private void RefreshBoardPresentation(LevelData level)
+    {
+        GridRenderer[] grids =
+            board.GetComponentsInChildren<GridRenderer>(true);
+
+        for (int i = 0; i < grids.Length; i++)
+        {
+            if (grids[i] == null)
+                continue;
+
+            grids[i].ConfigureGrid(
+                level.width,
+                level.height,
+                level.spacing
+            );
+        }
+    }
+
+    private static bool IsLevelPathValid(
+        List<Vector2Int> path,
+        int width,
+        int height,
+        HashSet<Vector2Int> claimedCells)
+    {
+        if (path == null || path.Count < 2)
+            return false;
+
+        HashSet<Vector2Int> localCells =
+            new HashSet<Vector2Int>();
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            Vector2Int cell = path[i];
+
+            if (cell.x < 0 || cell.x >= width ||
+                cell.y < 0 || cell.y >= height)
+            {
+                return false;
+            }
+
+            if (!localCells.Add(cell) || claimedCells.Contains(cell))
+                return false;
+        }
+
+        for (int i = 0; i < path.Count - 1; i++)
+        {
+            Vector2Int delta = path[i + 1] - path[i];
+
+            if (Mathf.Abs(delta.x) + Mathf.Abs(delta.y) != 1)
+                return false;
+        }
+
+        foreach (Vector2Int cell in localCells)
+            claimedCells.Add(cell);
+
+        return true;
     }
 
     private ArrowPathController GetLevelArrowPrefab(LevelData level)
