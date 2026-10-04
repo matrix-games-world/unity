@@ -52,6 +52,13 @@ public class PuzzleBoard : MonoBehaviour
         return arrows.Count == 0;
     }
 
+    public void ConfigureBoard(int newWidth, int newHeight, float newSpacing)
+    {
+        width = Mathf.Max(2, newWidth);
+        height = Mathf.Max(2, newHeight);
+        spacing = Mathf.Max(0.01f, newSpacing);
+    }
+
     private void Awake()
     {
         lives = Mathf.Max(1, startingLives);
@@ -76,34 +83,56 @@ public class PuzzleBoard : MonoBehaviour
         LivesChanged?.Invoke(lives);
     }
 
-    public void RegisterArrow(
+    public bool RegisterArrow(
         ArrowPathController arrow,
         List<Vector2Int> path)
     {
         if (arrow == null || path == null || path.Count == 0)
-            return;
+            return false;
 
-        if (!arrows.Contains(arrow))
-            arrows.Add(arrow);
+        HashSet<Vector2Int> localCells =
+            new HashSet<Vector2Int>();
 
         for (int i = 0; i < path.Count; i++)
         {
             Vector2Int cell = path[i];
 
+            if (!IsInside(cell))
+            {
+                Debug.LogError(
+                    "PuzzleBoard: Arrow path cell is outside the board: " + cell
+                );
+                return false;
+            }
+
+            if (!localCells.Add(cell))
+            {
+                Debug.LogError(
+                    "PuzzleBoard: Arrow path uses the same cell twice: " + cell
+                );
+                return false;
+            }
+
             if (occupied.TryGetValue(
-                cell,
-                out ArrowPathController existing) &&
+                    cell,
+                    out ArrowPathController existing) &&
                 existing != null &&
                 existing != arrow)
             {
                 Debug.LogError(
                     "PuzzleBoard: Overlapping arrows at cell " + cell
                 );
-                continue;
+                return false;
             }
-
-            occupied[cell] = arrow;
         }
+
+        if (!arrows.Contains(arrow))
+            arrows.Add(arrow);
+
+        foreach (Vector2Int cell in localCells)
+            occupied[cell] = arrow;
+
+        return true;
     }
 
     public void UnregisterArrow(
