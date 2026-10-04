@@ -166,6 +166,13 @@ public class ArrowPathController : MonoBehaviour
 
     private void Build()
     {
+        if (board != null)
+        {
+            gridWidth = board.GetWidth();
+            gridHeight = board.GetHeight();
+            spacing = board.GetSpacing();
+        }
+
         if (!ValidatePath())
             return;
 
@@ -176,8 +183,13 @@ public class ArrowPathController : MonoBehaviour
         headDistance = originalLength;
         DrawArrow(headDistance);
 
-        if (board != null)
-            board.RegisterArrow(this, path);
+        if (board != null && !board.RegisterArrow(this, path))
+        {
+            Debug.LogError(
+                "ArrowPathController: Arrow was not registered because its path is invalid or overlaps another arrow."
+            );
+            Destroy(gameObject);
+        }
     }
 
     private bool ValidatePath()
@@ -186,6 +198,21 @@ public class ArrowPathController : MonoBehaviour
         {
             Debug.LogError("ArrowPathController: Path must contain at least 2 cells.");
             return false;
+        }
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            Vector2Int cell = path[i];
+
+            if (cell.x < 0 || cell.x >= gridWidth ||
+                cell.y < 0 || cell.y >= gridHeight)
+            {
+                Debug.LogError(
+                    "ArrowPathController: Path cell is outside the board: " + cell +
+                    " for " + gridWidth + "x" + gridHeight + " board."
+                );
+                return false;
+            }
         }
 
         for (int i = 0; i < path.Count - 1; i++)
