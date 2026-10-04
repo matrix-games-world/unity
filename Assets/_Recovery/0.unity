@@ -166,11 +166,7 @@ MonoBehaviour:
   board: {fileID: 1231063922}
   arrowPrefab: {fileID: 8052503634009987049, guid: 470abe4009124014c8fff5b138393b8e, type: 3}
   levels:
-  - {fileID: 11400000, guid: a16b4b0f75a467a4497dc687aa4826ee, type: 2}
-  - {fileID: 11400000, guid: f824b0027f3f0534e9e67518881cf6b1, type: 2}
-  - {fileID: 11400000, guid: 762225e7d4f6ab7469bb6a202e084483, type: 2}
-  - {fileID: 11400000, guid: 940fd3f9033aeb344bf88ff839130b65, type: 2}
-  - {fileID: 11400000, guid: 13fe003a9b64131459c6cb8e2ac22eb7, type: 2}
+  - {fileID: 11400000, guid: 34581d04b685533468ed148ee87779e4, type: 2}
   currentLevelIndex: 0
 --- !u!1 &455843946
 GameObject:
@@ -411,15 +407,13 @@ MonoBehaviour:
   maxOrthographicSize: 9
   mouseWheelZoomSpeed: 0.9
   pinchZoomSpeed: 0.012
-  fitPadding: 0.35
-  centerOnArrowContent: 1
-  fitMarginCells: 1.25
+  fitPaddingCells: 1.25
+  panMarginCells: 2
   enableTouchPan: 1
   enableMouseRightDrag: 1
   mousePanMultiplier: 1
   touchPanMultiplier: 1
   touchDragThresholdPixels: 12
-  panMarginCells: 2
 --- !u!1 &619394800
 GameObject:
   m_ObjectHideFlags: 0

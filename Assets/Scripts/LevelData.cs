@@ -26,29 +26,44 @@ public class LevelData : ScriptableObject
     public ArrowLevelDifficulty difficulty = ArrowLevelDifficulty.Medium;
     public int seed = 20261003;
 
-    [Tooltip("Empty cells required between different arrows. 1 means two different arrows cannot touch side-by-side or corner-to-corner.")]
-    [Range(0, 1)] public int minimumSeparation = 1;
+    [Tooltip("Empty cells required between different arrows. 0 allows the dense reference-style maze packing.")]
+    [Range(0, 1)] public int minimumSeparation = 0;
 
     [Tooltip("Minimum Chebyshev distance between different arrow heads.")]
     [Min(1)] public int headClearanceCells = 2;
 
-    [Tooltip("Generator search effort used while creating different maze shapes.")]
+    [Tooltip("Generator effort. The reference generator uses bounded randomized construction, so this is not an unbounded search.")]
     [Min(100)] public int shapeIterations = 1200;
 
-    [Tooltip("Try to use most of the board without forcing every cell to contain an arrow.")]
-    [Range(0.25f, 0.90f)] public float targetCoverage = 0.62f;
+    [Tooltip("Target coverage used by non-full-board levels.")]
+    [Range(0.25f, 0.98f)] public float targetCoverage = 0.80f;
 
-    [Tooltip("When enabled, the generator attempts to use the full available board area.")]
+    [Tooltip("When enabled for a rectangular level, every grid point is assigned exactly once.")]
     public bool fillEntireBoard = true;
 
-    [Tooltip("When enabled, generated levels are kept only when the solver finds a safe sequence.")]
+    [Tooltip("When enabled, generated levels are kept only when a safe sequence exists.")]
     public bool requireSolvable = true;
 
-    [Tooltip("Keep the number of moves available at the beginning intentionally small on harder levels.")]
+    [Tooltip("Keep beginning availability intentionally small on harder levels.")]
     public bool enforceDifficulty = true;
 
+    [Header("Generated Shape")]
+    [Tooltip("When enabled, only visibleCells are rendered as dots. This allows heart/leaf/custom silhouettes without extra dots around them.")]
+    public bool useGeneratedCellMask = false;
+
+    [Tooltip("Cells whose dots are allowed to remain visible for this generated shape.")]
+    public List<Vector2Int> visibleCells = new List<Vector2Int>();
+
+    [Tooltip("Human-readable generated silhouette name.")]
+    public string generatedShape = "Rectangle";
+
+    [Tooltip("Human-readable generator style name.")]
+    public string generatedStyle = "ReferenceMaze";
+
+    [Tooltip("Fraction of the intended shape occupied by arrow paths at generation time.")]
+    [Range(0f, 1f)] public float generatedShapeFill = 1f;
+
     [Header("Default Arrow - Proof Prefab")]
-    [Tooltip("Working Proof arrow prefab. Its sprite is copied, while ArrowPathController keeps its own connected body/head sizing.")]
     public ArrowPathController defaultArrowPrefab;
 
     [Header("Fallback Appearance")]

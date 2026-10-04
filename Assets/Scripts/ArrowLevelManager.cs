@@ -22,7 +22,8 @@ public class ArrowLevelManager : MonoBehaviour
     private void Awake()
     {
         if (board == null)
-            board = FindFirstObjectByType<PuzzleBoard>();
+            board =
+                FindFirstObjectByType<PuzzleBoard>();
     }
 
     private void Start()
@@ -32,84 +33,285 @@ public class ArrowLevelManager : MonoBehaviour
 
     public void LoadCurrentLevel()
     {
-        if (levels == null || levels.Count == 0)
+        if (
+            levels == null ||
+            levels.Count == 0
+        )
         {
-            Debug.LogWarning("ArrowLevelManager: No levels assigned.");
+            Debug.LogWarning(
+                "ArrowLevelManager: No levels assigned."
+            );
+
             return;
         }
 
-        if (currentLevelIndex < 0 || currentLevelIndex >= levels.Count)
+        if (
+            currentLevelIndex < 0 ||
+            currentLevelIndex >= levels.Count
+        )
         {
             Debug.LogError(
                 "ArrowLevelManager: Current level index is out of range."
             );
+
             return;
         }
 
-        LoadLevel(levels[currentLevelIndex]);
+        LoadLevel(
+            levels[currentLevelIndex]
+        );
     }
 
-    public void LoadLevel(LevelData level)
+    public void LoadLevel(
+        LevelData level)
     {
-        if (loadingLevel || level == null)
+        if (
+            loadingLevel ||
+            level == null
+        )
+        {
             return;
+        }
 
-        loadingLevel = true;
+        loadingLevel =
+            true;
 
         if (board == null)
-            board = FindFirstObjectByType<PuzzleBoard>();
+            board =
+                FindFirstObjectByType<PuzzleBoard>();
 
         if (board == null)
         {
-            Debug.LogError("ArrowLevelManager: PuzzleBoard not found.");
-            loadingLevel = false;
+            Debug.LogError(
+                "ArrowLevelManager: PuzzleBoard not found."
+            );
+
+            loadingLevel =
+                false;
+
             return;
         }
 
-        ClearSpawnedArrows();
-        board.ResetBoard();
-        board.SetLivesForLevel(level.lives);
+        board.ConfigureBoard(
+            level.width,
+            level.height,
+            level.spacing
+        );
 
-        ArrowPathController sourcePrefab = GetLevelArrowPrefab(level);
+        ClearSpawnedArrows();
+
+        board.ResetBoard();
+
+        board.SetLivesForLevel(
+            level.lives
+        );
+
+        RefreshBoardPresentation(
+            level
+        );
+
+        ArrowPathController sourcePrefab =
+            GetLevelArrowPrefab(
+                level
+            );
 
         if (sourcePrefab == null)
         {
             Debug.LogError(
-                "ArrowLevelManager: Assign LevelData > Default Arrow Prefab " +
-                "or ArrowLevelManager > Arrow Prefab."
+                "ArrowLevelManager: No Arrow Prefab assigned."
             );
-            loadingLevel = false;
+
+            loadingLevel =
+                false;
+
             return;
         }
 
+        HashSet<Vector2Int> claimedCells =
+            new HashSet<Vector2Int>();
+
+        bool invalidLevel =
+            false;
+
         if (level.arrows != null)
         {
-            for (int i = 0; i < level.arrows.Count; i++)
+            for (
+                int i = 0;
+                i < level.arrows.Count;
+                i++
+            )
             {
-                ArrowData data = level.arrows[i];
+                ArrowData data =
+                    level.arrows[i];
 
-                if (data == null || data.path == null || data.path.Count < 2)
+                if (
+                    data == null ||
+                    !TryClaimPath(
+                        data.path,
+                        level.width,
+                        level.height,
+                        claimedCells
+                    )
+                )
+                {
+                    invalidLevel =
+                        true;
+
+                    Debug.LogError(
+                        "ArrowLevelManager: Rejected Arrow " +
+                        i +
+                        ". Path is outside the board, repeats a cell, has an invalid step, or overlaps another arrow."
+                    );
+
                     continue;
+                }
 
-                SpawnArrow(sourcePrefab, level, data);
+                SpawnArrow(
+                    sourcePrefab,
+                    level,
+                    data
+                );
             }
         }
+
+        if (invalidLevel)
+        {
+            Debug.LogError(
+                "ArrowLevelManager: LEVEL CONTAINS INVALID PATHS. " +
+                "Generate Level 1 again with the new LevelGeneratorEditor."
+            );
+        }
+
+        BoardPanZoom zoom =
+            FindFirstObjectByType<BoardPanZoom>();
+
+        if (zoom != null)
+            zoom.FitBoard();
 
         Debug.Log(
             "ArrowLevelManager: Loaded level " +
             (currentLevelIndex + 1) +
             " with " +
             spawnedArrows.Count +
-            " arrows."
+            " valid arrows."
         );
 
-        loadingLevel = false;
+        loadingLevel =
+            false;
     }
 
-    private ArrowPathController GetLevelArrowPrefab(LevelData level)
+    private void RefreshBoardPresentation(
+        LevelData level)
     {
-        if (level != null && level.defaultArrowPrefab != null)
+        GridRenderer[] grids =
+            board.GetComponentsInChildren<
+                GridRenderer
+            >(true);
+
+        for (
+            int i = 0;
+            i < grids.Length;
+            i++
+        )
+        {
+            if (grids[i] == null)
+                continue;
+
+            grids[i].ConfigureGrid(
+                level.width,
+                level.height,
+                level.spacing
+            );
+        }
+    }
+
+    private static bool TryClaimPath(
+        List<Vector2Int> path,
+        int width,
+        int height,
+        HashSet<Vector2Int> claimedCells)
+    {
+        if (
+            path == null ||
+            path.Count < 2
+        )
+        {
+            return false;
+        }
+
+        HashSet<Vector2Int> localCells =
+            new HashSet<Vector2Int>();
+
+        for (
+            int i = 0;
+            i < path.Count;
+            i++
+        )
+        {
+            Vector2Int cell =
+                path[i];
+
+            if (
+                cell.x < 0 ||
+                cell.x >= width ||
+                cell.y < 0 ||
+                cell.y >= height
+            )
+            {
+                return false;
+            }
+
+            if (
+                !localCells.Add(cell) ||
+                claimedCells.Contains(cell)
+            )
+            {
+                return false;
+            }
+        }
+
+        for (
+            int i = 0;
+            i < path.Count - 1;
+            i++
+        )
+        {
+            Vector2Int delta =
+                path[i + 1] -
+                path[i];
+
+            if (
+                Mathf.Abs(delta.x) +
+                Mathf.Abs(delta.y) != 1
+            )
+            {
+                return false;
+            }
+        }
+
+        foreach (
+            Vector2Int cell
+            in localCells
+        )
+        {
+            claimedCells.Add(
+                cell
+            );
+        }
+
+        return true;
+    }
+
+    private ArrowPathController GetLevelArrowPrefab(
+        LevelData level)
+    {
+        if (
+            level != null &&
+            level.defaultArrowPrefab != null
+        )
+        {
             return level.defaultArrowPrefab;
+        }
 
         return arrowPrefab;
     }
@@ -119,32 +321,57 @@ public class ArrowLevelManager : MonoBehaviour
         LevelData level,
         ArrowData data)
     {
-        Sprite headSprite = data.headSprite;
-        Color color = data.arrowColor;
+        Sprite headSprite =
+            data.headSprite;
+
+        Color color =
+            data.arrowColor;
 
         SpriteRenderer sourceHead =
-            FindHeadSpriteRenderer(sourcePrefab);
+            FindHeadSpriteRenderer(
+                sourcePrefab
+            );
 
-        if (sourceHead != null && sourceHead.sprite != null)
-            headSprite = sourceHead.sprite;
+        if (
+            sourceHead != null &&
+            sourceHead.sprite != null
+        )
+        {
+            headSprite =
+                sourceHead.sprite;
+        }
 
         LineRenderer sourceLine =
-            sourcePrefab.GetComponent<LineRenderer>();
+            sourcePrefab.GetComponent<
+                LineRenderer
+            >();
 
         if (sourceLine != null)
-            color = sourceLine.startColor;
+        {
+            color =
+                sourceLine.startColor;
+        }
 
         if (headSprite == null)
-            headSprite = level.defaultHeadSprite;
+            headSprite =
+                level.defaultHeadSprite;
 
         if (color.a <= 0.001f)
-            color = level.defaultArrowColor;
+        {
+            color =
+                level.defaultArrowColor;
+        }
 
         ArrowPathController arrow =
-            Instantiate(sourcePrefab, board.transform);
+            Instantiate(
+                sourcePrefab,
+                board.transform
+            );
 
         arrow.Configure(
-            new List<Vector2Int>(data.path),
+            new List<Vector2Int>(
+                data.path
+            ),
             headSprite,
             color,
             level.width,
@@ -153,14 +380,23 @@ public class ArrowLevelManager : MonoBehaviour
         );
 
         ArrowTouchPrecision precision =
-            arrow.GetComponent<ArrowTouchPrecision>();
+            arrow.GetComponent<
+                ArrowTouchPrecision
+            >();
 
         if (precision == null)
-            precision = arrow.gameObject.AddComponent<ArrowTouchPrecision>();
+        {
+            precision =
+                arrow.gameObject.AddComponent<
+                    ArrowTouchPrecision
+                >();
+        }
 
         precision.ApplyNow();
 
-        spawnedArrows.Add(arrow);
+        spawnedArrows.Add(
+            arrow
+        );
     }
 
     private static SpriteRenderer FindHeadSpriteRenderer(
@@ -170,23 +406,49 @@ public class ArrowLevelManager : MonoBehaviour
             return null;
 
         SpriteRenderer[] renderers =
-            arrow.GetComponentsInChildren<SpriteRenderer>(true);
+            arrow.GetComponentsInChildren<
+                SpriteRenderer
+            >(true);
 
-        for (int i = 0; i < renderers.Length; i++)
+        for (
+            int i = 0;
+            i < renderers.Length;
+            i++
+        )
         {
-            SpriteRenderer renderer = renderers[i];
+            SpriteRenderer renderer =
+                renderers[i];
 
-            if (renderer == null || renderer.sprite == null)
+            if (
+                renderer == null ||
+                renderer.sprite == null
+            )
+            {
                 continue;
+            }
 
-            if (renderer.gameObject.name == "ArrowHead")
+            if (
+                renderer.gameObject.name ==
+                "ArrowHead"
+            )
+            {
                 return renderer;
+            }
         }
 
-        for (int i = 0; i < renderers.Length; i++)
+        for (
+            int i = 0;
+            i < renderers.Length;
+            i++
+        )
         {
-            if (renderers[i] != null && renderers[i].sprite != null)
+            if (
+                renderers[i] != null &&
+                renderers[i].sprite != null
+            )
+            {
                 return renderers[i];
+            }
         }
 
         return null;
@@ -194,12 +456,21 @@ public class ArrowLevelManager : MonoBehaviour
 
     private void ClearSpawnedArrows()
     {
-        for (int i = 0; i < spawnedArrows.Count; i++)
+        for (
+            int i = 0;
+            i < spawnedArrows.Count;
+            i++
+        )
         {
-            ArrowPathController arrow = spawnedArrows[i];
+            ArrowPathController arrow =
+                spawnedArrows[i];
 
             if (arrow != null)
-                Destroy(arrow.gameObject);
+            {
+                Destroy(
+                    arrow.gameObject
+                );
+            }
         }
 
         spawnedArrows.Clear();
@@ -207,16 +478,28 @@ public class ArrowLevelManager : MonoBehaviour
 
     public void LevelSolved()
     {
-        if (levels == null || levels.Count == 0)
-            return;
-
-        if (currentLevelIndex + 1 >= levels.Count)
+        if (
+            levels == null ||
+            levels.Count == 0
+        )
         {
-            Debug.Log("ArrowLevelManager: ALL LEVELS COMPLETED!");
+            return;
+        }
+
+        if (
+            currentLevelIndex + 1 >=
+            levels.Count
+        )
+        {
+            Debug.Log(
+                "ArrowLevelManager: ALL LEVELS COMPLETED!"
+            );
+
             return;
         }
 
         currentLevelIndex++;
+
         LoadCurrentLevel();
     }
 
@@ -227,14 +510,18 @@ public class ArrowLevelManager : MonoBehaviour
 
     public LevelData GetCurrentLevel()
     {
-        if (levels == null ||
+        if (
+            levels == null ||
             currentLevelIndex < 0 ||
-            currentLevelIndex >= levels.Count)
+            currentLevelIndex >= levels.Count
+        )
         {
             return null;
         }
 
-        return levels[currentLevelIndex];
+        return levels[
+            currentLevelIndex
+        ];
     }
 
     public void RestartLevel()
@@ -244,13 +531,17 @@ public class ArrowLevelManager : MonoBehaviour
 
     public void NextLevel()
     {
-        if (levels == null ||
-            currentLevelIndex + 1 >= levels.Count)
+        if (
+            levels == null ||
+            currentLevelIndex + 1 >=
+            levels.Count
+        )
         {
             return;
         }
 
         currentLevelIndex++;
+
         LoadCurrentLevel();
     }
 }

@@ -29,6 +29,15 @@ public class ArrowPathController : MonoBehaviour
     [Header("Appearance")]
     [SerializeField] private float lineWidth = 0.24f;
     [SerializeField] private Color arrowColor = Color.black;
+    [Header("Selection")]
+    [SerializeField] private Color selectedArrowColor = new Color(0.38f, 0.70f, 1.00f, 1f);
+    [SerializeField] private bool highlightOnClick = true;
+    [SerializeField][Range(0f, 0.60f)] private float headTipAnchorCorrectionCells = 0.08f;
+
+    // Hard runtime shift so prefab/scene serialization cannot silently keep an older value.
+    // Positive value moves the visible head tip along the arrow direction.
+    private const float HeadTipRuntimeShiftCells = 0.42f;
+    private bool selectedVisual;
     [SerializeField] private Sprite headSprite;
     [SerializeField] private float headScale = 0.72f;
     [SerializeField] private float headWorldWidth = 1.15f;
@@ -66,6 +75,9 @@ public class ArrowPathController : MonoBehaviour
 
     private bool escaping;
     private bool configuredAtRuntime;
+    private bool blockedMotion;
+
+    private Coroutine blockedMotionRoutine;
 
     private void Awake()
     {
@@ -161,7 +173,12 @@ public class ArrowPathController : MonoBehaviour
         gridWidth = newGridWidth;
         gridHeight = newGridHeight;
 
-        Configure(newPath, newHeadSprite, newColor, newSpacing);
+        Configure(
+            newPath,
+            newHeadSprite,
+            newColor,
+            newSpacing
+        );
     }
 
     private void Build()
@@ -184,23 +201,68 @@ public class ArrowPathController : MonoBehaviour
     {
         if (path == null || path.Count < 2)
         {
-            Debug.LogError("ArrowPathController: Path must contain at least 2 cells.");
+            Debug.LogError(
+                "ArrowPathController: Path must contain at least 2 cells."
+            );
             return false;
+        }
+
+        HashSet<Vector2Int> uniqueCells =
+            new HashSet<Vector2Int>();
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            Vector2Int cell = path[i];
+
+            if (
+                cell.x < 0 ||
+                cell.x >= gridWidth ||
+                cell.y < 0 ||
+                cell.y >= gridHeight
+            )
+            {
+                Debug.LogError(
+                    "ArrowPathController: Path cell is outside the board: " +
+                    cell +
+                    " for " +
+                    gridWidth +
+                    "x" +
+                    gridHeight +
+                    " board."
+                );
+
+                return false;
+            }
+
+            if (!uniqueCells.Add(cell))
+            {
+                Debug.LogError(
+                    "ArrowPathController: Path repeats cell " +
+                    cell
+                );
+
+                return false;
+            }
         }
 
         for (int i = 0; i < path.Count - 1; i++)
         {
             Vector2Int a = path[i];
             Vector2Int b = path[i + 1];
+
             int dx = Mathf.Abs(b.x - a.x);
             int dy = Mathf.Abs(b.y - a.y);
 
             if (dx + dy != 1)
             {
                 Debug.LogError(
-                    "ArrowPathController: Invalid path step " + a + " -> " + b +
+                    "ArrowPathController: Invalid path step " +
+                    a +
+                    " -> " +
+                    b +
                     ". Move exactly one cell Up/Down/Left/Right."
                 );
+
                 return false;
             }
         }
@@ -208,7 +270,8 @@ public class ArrowPathController : MonoBehaviour
         return true;
     }
 
-    private Direction DirectionFromDelta(Vector2Int delta)
+    private Direction DirectionFromDelta(
+        Vector2Int delta)
     {
         if (delta.x > 0) return Direction.Right;
         if (delta.x < 0) return Direction.Left;
@@ -223,56 +286,125 @@ public class ArrowPathController : MonoBehaviour
         originalLength = 0f;
         totalLength = 0f;
 
-        AddPoint(CellToWorld(path[0]), 0f);
+        AddPoint(
+            CellToWorld(path[0]),
+            0f
+        );
 
-        int samples = Mathf.Max(4, samplesPerCell);
+        int samples =
+            Mathf.Max(
+                4,
+                samplesPerCell
+            );
 
-        for (int i = 0; i < path.Count - 1; i++)
+        for (
+            int i = 0;
+            i < path.Count - 1;
+            i++
+        )
         {
-            Vector3 a = CellToWorld(path[i]);
-            Vector3 b = CellToWorld(path[i + 1]);
+            Vector3 a =
+                CellToWorld(path[i]);
 
-            for (int s = 1; s <= samples; s++)
+            Vector3 b =
+                CellToWorld(path[i + 1]);
+
+            for (
+                int s = 1;
+                s <= samples;
+                s++
+            )
             {
-                float t = s / (float)samples;
-                AddPointIfDifferent(Vector3.Lerp(a, b, t));
+                float t =
+                    s /
+                    (float)samples;
+
+                AddPointIfDifferent(
+                    Vector3.Lerp(
+                        a,
+                        b,
+                        t
+                    )
+                );
             }
         }
 
-        originalLength = totalLength;
+        originalLength =
+            totalLength;
 
-        Vector3 exitDirection = DirectionToVector(headDirection);
-        float exitDistance = originalLength +
-                             Mathf.Max(
-                                 spacing * 12f,
-                                 Mathf.Max(gridWidth, gridHeight) * spacing
-                             ) + extraExitDistance;
+        Vector3 exitDirection =
+            DirectionToVector(
+                headDirection
+            );
 
-        int exitSamples = Mathf.Max(100, samples * 12);
-        Vector3 exitStart = centerline[centerline.Count - 1];
+        float exitDistance =
+            originalLength +
+            Mathf.Max(
+                spacing * 12f,
+                Mathf.Max(
+                    gridWidth,
+                    gridHeight
+                ) * spacing
+            ) +
+            extraExitDistance;
 
-        for (int i = 1; i <= exitSamples; i++)
+        int exitSamples =
+            Mathf.Max(
+                100,
+                samples * 12
+            );
+
+        Vector3 exitStart =
+            centerline[
+                centerline.Count - 1
+            ];
+
+        for (
+            int i = 1;
+            i <= exitSamples;
+            i++
+        )
         {
-            float t = i / (float)exitSamples;
-            AddPointIfDifferent(exitStart + exitDirection * (exitDistance * t));
+            float t =
+                i /
+                (float)exitSamples;
+
+            AddPointIfDifferent(
+                exitStart +
+                exitDirection *
+                (exitDistance * t)
+            );
         }
     }
 
-    private void AddPoint(Vector3 point, float distance)
+    private void AddPoint(
+        Vector3 point,
+        float distance)
     {
         centerline.Add(point);
         distances.Add(distance);
     }
 
-    private void AddPointIfDifferent(Vector3 point)
+    private void AddPointIfDifferent(
+        Vector3 point)
     {
         if (centerline.Count == 0)
         {
-            AddPoint(point, 0f);
+            AddPoint(
+                point,
+                0f
+            );
             return;
         }
 
-        float amount = Vector3.Distance(centerline[centerline.Count - 1], point);
+        float amount =
+            Vector3.Distance(
+                centerline[
+                    centerline.Count - 1
+                ],
+                point
+            );
+
         if (amount <= 0.00001f)
             return;
 
@@ -283,9 +415,12 @@ public class ArrowPathController : MonoBehaviour
 
     private void BuildVisual()
     {
+        // Stable visual: the triangle tip is anchored exactly on the final
+        // grid point. No artificial forward/backward head offset is used.
         lineWidth = spacing * 0.18f;
-        headWorldWidth = spacing * 1.15f;
-        headTipOffset = spacing * 3.50f;
+        headWorldWidth = spacing * 0.90f;
+        headTipOffset = 0f;
+        headBackwardOffset = 0f;
 
         line = GetComponent<LineRenderer>();
         if (line == null)
@@ -300,9 +435,11 @@ public class ArrowPathController : MonoBehaviour
         line.numCapVertices = 12;
         line.numCornerVertices = 24;
         line.alignment = LineAlignment.TransformZ;
-        line.sortingOrder = 20;
+        line.sortingOrder = 999;
 
-        Shader shader = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
+        Shader shader = Shader.Find(
+            "Universal Render Pipeline/2D/Sprite-Unlit-Default"
+        );
         if (shader == null)
             shader = Shader.Find("Sprites/Default");
         if (shader != null)
@@ -319,7 +456,6 @@ public class ArrowPathController : MonoBehaviour
             headObject = new GameObject("ArrowHead");
             headObject.transform.SetParent(transform, true);
             headRenderer = headObject.AddComponent<SpriteRenderer>();
-            headObject.transform.localScale = Vector3.one * headScale;
         }
         else
         {
@@ -329,57 +465,103 @@ public class ArrowPathController : MonoBehaviour
         headRenderer.sprite = headSprite;
         FitHeadToWorldWidth();
         headRenderer.color = arrowColor;
-        headRenderer.sortingOrder = 21;
+        headRenderer.sortingOrder = 1000;
     }
 
     private void FitHeadToWorldWidth()
     {
-        if (headObject == null || headRenderer == null || headRenderer.sprite == null)
+        if (
+            headObject == null ||
+            headRenderer == null ||
+            headRenderer.sprite == null
+        )
+        {
             return;
+        }
 
-        float spriteWidth = Mathf.Abs(headRenderer.sprite.bounds.size.x);
+        float spriteWidth =
+            Mathf.Abs(
+                headRenderer.sprite.bounds.size.x
+            );
+
         if (spriteWidth <= 0.0001f)
             return;
 
-        headScale = headWorldWidth / spriteWidth;
-        headObject.transform.localScale = Vector3.one * headScale;
+        headScale =
+            headWorldWidth /
+            spriteWidth;
+
+        headObject.transform.localScale =
+            Vector3.one *
+            headScale;
     }
 
     private void BuildHitAreas()
     {
         ClearHitAreas();
 
-        for (float d = 0f; d <= originalLength; d += hitSpacing)
+        for (
+            float d = 0f;
+            d <= originalLength;
+            d += hitSpacing
+        )
         {
-            GameObject hitObject = new GameObject("ArrowHit");
-            hitObject.transform.SetParent(transform, true);
-            hitObject.transform.position = SampleCenterline(d);
-            hitObject.transform.position = new Vector3(
-                hitObject.transform.position.x,
-                hitObject.transform.position.y,
-                -0.05f
+            GameObject hitObject =
+                new GameObject(
+                    "ArrowHit"
+                );
+
+            hitObject.transform.SetParent(
+                transform,
+                true
             );
 
-            CircleCollider2D collider = hitObject.AddComponent<CircleCollider2D>();
-            collider.radius = hitRadius;
+            hitObject.transform.position =
+                SampleCenterline(d);
+
+            hitObject.transform.position =
+                new Vector3(
+                    hitObject.transform.position.x,
+                    hitObject.transform.position.y,
+                    -0.05f
+                );
+
+            CircleCollider2D collider =
+                hitObject.AddComponent<
+                    CircleCollider2D
+                >();
+
+            collider.radius =
+                hitRadius;
+
             collider.enabled = false;
 
-            ArrowHitArea hit = hitObject.AddComponent<ArrowHitArea>();
+            ArrowHitArea hit =
+                hitObject.AddComponent<
+                    ArrowHitArea
+                >();
+
             hit.Initialize(this);
-            hitAreas.Add(hitObject);
+
+            hitAreas.Add(
+                hitObject
+            );
         }
     }
 
     private void Update()
     {
-        if (escaping)
+        if (escaping || blockedMotion)
             return;
 
         if (Input.GetMouseButtonDown(0))
             TryPick(Input.mousePosition);
 
-        if (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began)
+        if (Input.touchCount > 0 &&
+            Input.GetTouch(0).phase == TouchPhase.Began)
+        {
             TryPick(Input.GetTouch(0).position);
+        }
     }
 
     private void TryPick(Vector2 screenPosition)
@@ -390,65 +572,175 @@ public class ArrowPathController : MonoBehaviour
         if (mainCamera == null || centerline.Count < 2)
             return;
 
+        Vector3 worldPoint = ScreenToWorld(screenPosition);
+        float myScore = GetHitScore(worldPoint);
+        if (float.IsPositiveInfinity(myScore))
+            return;
+
+        ArrowPathController[] all =
+            FindObjectsByType<ArrowPathController>(FindObjectsSortMode.None);
+
+        for (int i = 0; i < all.Length; i++)
+        {
+            ArrowPathController other = all[i];
+            if (other == null || other == this || other.IsEscaping())
+                continue;
+
+            float otherScore = other.GetHitScore(worldPoint);
+            if (otherScore + 0.0005f < myScore)
+                return;
+        }
+
+        if (highlightOnClick)
+            SetSelected(true);
+
+        if (board != null)
+            board.TryMoveArrow(this);
+        else
+            BeginEscape();
+    }
+
+    private Vector3 ScreenToWorld(Vector2 screenPosition)
+    {
         float worldZ = transform.position.z - 0.15f;
         float distanceFromCamera = worldZ - mainCamera.transform.position.z;
-
-        Vector3 worldPoint = mainCamera.ScreenToWorldPoint(
-            new Vector3(screenPosition.x, screenPosition.y, distanceFromCamera)
+        return mainCamera.ScreenToWorldPoint(
+            new Vector3(
+                screenPosition.x,
+                screenPosition.y,
+                distanceFromCamera
+            )
         );
-
-        float bodyTouch = DistanceToVisibleArrow(worldPoint);
-        float headTouch = DistanceToHead(worldPoint);
-        float allowedBody = Mathf.Max(hitRadius, spacing * 0.10f);
-
-        bool touchedBody = bodyTouch <= allowedBody;
-        bool touchedHead = headTouch <= headWorldWidth * 0.5f + headHitPadding;
-
-        if (touchedBody || touchedHead)
-        {
-            if (board != null)
-                board.TryMoveArrow(this);
-            else
-                BeginEscape();
-        }
     }
 
-    private float DistanceToHead(Vector3 point)
+    private float GetHitScore(Vector3 worldPoint)
     {
-        if (headObject == null || headRenderer == null || headRenderer.sprite == null)
-            return float.MaxValue;
+        float body = DistanceToVisibleArrow(worldPoint);
+        float head = DistanceToHead(worldPoint);
 
-        Bounds bounds = headRenderer.bounds;
-        Vector2 closest = new Vector2(
-            Mathf.Clamp(point.x, bounds.min.x, bounds.max.x),
-            Mathf.Clamp(point.y, bounds.min.y, bounds.max.y)
+        float bodyThreshold = Mathf.Max(
+            spacing * 0.055f,
+            lineWidth * 0.40f
         );
 
-        return Vector2.Distance(new Vector2(point.x, point.y), closest);
-    }
+        float headThreshold = Mathf.Max(
+            spacing * 0.045f,
+            headWorldWidth * 0.24f
+        );
 
-    private float DistanceToVisibleArrow(Vector3 point)
-    {
-        float best = float.MaxValue;
-        if (line == null || line.positionCount < 2)
-            return best;
+        float best = float.PositiveInfinity;
 
-        for (int i = 0; i < line.positionCount - 1; i++)
-        {
-            Vector3 a = line.GetPosition(i);
-            Vector3 b = line.GetPosition(i + 1);
-            Vector3 ab = b - a;
-            float abSq = ab.sqrMagnitude;
-
-            float t = abSq > 0.000001f
-                ? Mathf.Clamp01(Vector3.Dot(point - a, ab) / abSq)
-                : 0f;
-
-            Vector3 closest = a + ab * t;
-            float distance = Vector2.Distance(
-                new Vector2(point.x, point.y),
-                new Vector2(closest.x, closest.y)
+        if (body <= bodyThreshold)
+            best = Mathf.Min(
+                best,
+                body / Mathf.Max(0.0001f, bodyThreshold)
             );
+
+        if (head <= headThreshold)
+            best = Mathf.Min(
+                best,
+                head / Mathf.Max(0.0001f, headThreshold)
+            );
+
+        return best;
+    }
+
+
+    private float DistanceToHead(
+        Vector3 point)
+    {
+        if (
+            headObject == null ||
+            headRenderer == null ||
+            headRenderer.sprite == null
+        )
+        {
+            return float.MaxValue;
+        }
+
+        Bounds bounds =
+            headRenderer.bounds;
+
+        Vector2 closest =
+            new Vector2(
+                Mathf.Clamp(
+                    point.x,
+                    bounds.min.x,
+                    bounds.max.x
+                ),
+                Mathf.Clamp(
+                    point.y,
+                    bounds.min.y,
+                    bounds.max.y
+                )
+            );
+
+        return Vector2.Distance(
+            new Vector2(
+                point.x,
+                point.y
+            ),
+            closest
+        );
+    }
+
+    private float DistanceToVisibleArrow(
+        Vector3 point)
+    {
+        float best =
+            float.MaxValue;
+
+        if (
+            line == null ||
+            line.positionCount < 2
+        )
+        {
+            return best;
+        }
+
+        for (
+            int i = 0;
+            i < line.positionCount - 1;
+            i++
+        )
+        {
+            Vector3 a =
+                line.GetPosition(i);
+
+            Vector3 b =
+                line.GetPosition(i + 1);
+
+            Vector3 ab =
+                b - a;
+
+            float abSq =
+                ab.sqrMagnitude;
+
+            float t =
+                abSq > 0.000001f
+                    ? Mathf.Clamp01(
+                        Vector3.Dot(
+                            point - a,
+                            ab
+                        ) /
+                        abSq
+                    )
+                    : 0f;
+
+            Vector3 closest =
+                a + ab * t;
+
+            float distance =
+                Vector2.Distance(
+                    new Vector2(
+                        point.x,
+                        point.y
+                    ),
+                    new Vector2(
+                        closest.x,
+                        closest.y
+                    )
+                );
 
             if (distance < best)
                 best = distance;
@@ -457,119 +749,412 @@ public class ArrowPathController : MonoBehaviour
         return best;
     }
 
+    public float GetInputScore(Vector3 worldPoint)
+    {
+        return GetHitScore(worldPoint);
+    }
+
+    public void SetSelected(bool selected)
+    {
+        if (selected && highlightOnClick)
+        {
+            ArrowPathController[] all =
+                FindObjectsByType<ArrowPathController>(FindObjectsSortMode.None);
+
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (all[i] != null && all[i] != this)
+                    all[i].SetSelected(false);
+            }
+        }
+
+        selectedVisual = selected;
+
+        Color visualColor = selected && highlightOnClick
+            ? selectedArrowColor
+            : arrowColor;
+
+        if (line != null)
+        {
+            line.startColor = visualColor;
+            line.endColor = visualColor;
+        }
+
+        if (headRenderer != null)
+            headRenderer.color = visualColor;
+    }
+
+    public bool IsSelected()
+    {
+        return selectedVisual;
+    }
+
     public void BeginEscape()
     {
         if (escaping)
             return;
 
-        StartCoroutine(EscapeRoutine());
+        if (blockedMotionRoutine != null)
+        {
+            StopCoroutine(
+                blockedMotionRoutine
+            );
+
+            blockedMotionRoutine =
+                null;
+
+            blockedMotion =
+                false;
+        }
+
+        StartCoroutine(
+            EscapeRoutine()
+        );
     }
 
     private IEnumerator EscapeRoutine()
     {
         escaping = true;
 
-        while (headDistance < totalLength)
+        while (
+            headDistance <
+            totalLength
+        )
         {
-            headDistance += moveSpeed * Time.deltaTime;
-            DrawArrow(headDistance);
+            headDistance +=
+                moveSpeed *
+                Time.deltaTime;
+
+            DrawArrow(
+                headDistance
+            );
+
             yield return null;
         }
 
-        DrawArrow(totalLength + 1f);
+        DrawArrow(
+            totalLength + 1f
+        );
 
         if (board != null)
-            board.UnregisterArrow(this, path);
+            board.UnregisterArrow(
+                this,
+                path
+            );
 
-        Destroy(gameObject);
+        Destroy(
+            gameObject
+        );
+    }
+
+    /*
+     * Blocked movement uses the SAME centerline as normal escape motion.
+     * This means a bent arrow keeps its original bends while the head moves
+     * forward toward the blocker and the body follows the same path.
+     */
+    public void PlayBlockedMotion(
+        float travelDistance,
+        float forwardDuration,
+        float returnDuration)
+    {
+        if (
+            escaping ||
+            centerline.Count < 2
+        )
+        {
+            return;
+        }
+
+        if (blockedMotionRoutine != null)
+        {
+            StopCoroutine(
+                blockedMotionRoutine
+            );
+        }
+
+        blockedMotionRoutine =
+            StartCoroutine(
+                BlockedMotionRoutine(
+                    Mathf.Max(
+                        0f,
+                        travelDistance
+                    ),
+                    Mathf.Max(
+                        0.01f,
+                        forwardDuration
+                    ),
+                    Mathf.Max(
+                        0.01f,
+                        returnDuration
+                    )
+                )
+            );
+    }
+
+    private IEnumerator BlockedMotionRoutine(
+        float travelDistance,
+        float forwardDuration,
+        float returnDuration)
+    {
+        blockedMotion = true;
+
+        float startDistance =
+            originalLength;
+
+        float targetDistance =
+            Mathf.Min(
+                totalLength,
+                startDistance +
+                travelDistance
+            );
+
+        float time = 0f;
+
+        while (
+            time <
+            forwardDuration
+        )
+        {
+            time +=
+                Time.deltaTime;
+
+            float t =
+                Mathf.Clamp01(
+                    time /
+                    forwardDuration
+                );
+
+            float eased =
+                Mathf.SmoothStep(
+                    0f,
+                    1f,
+                    t
+                );
+
+            headDistance =
+                Mathf.Lerp(
+                    startDistance,
+                    targetDistance,
+                    eased
+                );
+
+            DrawArrow(
+                headDistance
+            );
+
+            yield return null;
+        }
+
+        headDistance =
+            targetDistance;
+
+        DrawArrow(
+            headDistance
+        );
+
+        time = 0f;
+
+        while (
+            time <
+            returnDuration
+        )
+        {
+            time +=
+                Time.deltaTime;
+
+            float t =
+                Mathf.Clamp01(
+                    time /
+                    returnDuration
+                );
+
+            float eased =
+                Mathf.SmoothStep(
+                    0f,
+                    1f,
+                    t
+                );
+
+            headDistance =
+                Mathf.Lerp(
+                    targetDistance,
+                    startDistance,
+                    eased
+                );
+
+            DrawArrow(
+                headDistance
+            );
+
+            yield return null;
+        }
+
+        headDistance =
+            startDistance;
+
+        DrawArrow(
+            headDistance
+        );
+
+        blockedMotion =
+            false;
+
+        blockedMotionRoutine =
+            null;
     }
 
     public void PlayBlockedFeedback()
     {
-        StartCoroutine(Flash(Color.red, 0.12f));
+        SetSelected(false);
+
+        StartCoroutine(
+            Flash(
+                Color.red,
+                0.12f
+            )
+        );
     }
 
     public void PlayBlockedTargetFeedback()
     {
-        StartCoroutine(Flash(new Color(1f, 0.35f, 0.35f), 0.18f));
+        StartCoroutine(
+            Flash(
+                new Color(
+                    1f,
+                    0.35f,
+                    0.35f
+                ),
+                0.18f
+            )
+        );
     }
 
-    private IEnumerator Flash(Color flashColor, float duration)
+    private IEnumerator Flash(
+        Color flashColor,
+        float duration)
     {
-        Color normal = arrowColor;
+        Color normal =
+            arrowColor;
 
         if (line != null)
         {
-            line.startColor = flashColor;
-            line.endColor = flashColor;
+            line.startColor =
+                flashColor;
+
+            line.endColor =
+                flashColor;
         }
 
         if (headRenderer != null)
-            headRenderer.color = flashColor;
+            headRenderer.color =
+                flashColor;
 
-        yield return new WaitForSeconds(duration);
+        yield return new WaitForSeconds(
+            duration
+        );
 
         if (line != null)
         {
-            line.startColor = normal;
-            line.endColor = normal;
+            line.startColor =
+                normal;
+
+            line.endColor =
+                normal;
         }
 
         if (headRenderer != null)
-            headRenderer.color = normal;
+            headRenderer.color =
+                normal;
     }
 
     private void DrawArrow(float currentHeadDistance)
     {
-        float bodyLength = originalLength;
-        float tailDistance = Mathf.Max(0f, currentHeadDistance - bodyLength);
-        float pathBodyEnd = Mathf.Max(tailDistance + 0.001f, currentHeadDistance);
-        float step = spacing / Mathf.Max(4, samplesPerCell);
-
-        int pointCount = Mathf.Max(
-            2,
-            Mathf.CeilToInt(Mathf.Max(0.001f, pathBodyEnd - tailDistance) / step)
+        float headLength = GetHeadLength();
+        float tailDistance = Mathf.Max(
+            0f,
+            currentHeadDistance - originalLength
+        );
+        float bodyEndDistance = Mathf.Max(
+            tailDistance,
+            currentHeadDistance - headLength
         );
 
-        List<Vector3> bodyPoints = new List<Vector3>(pointCount + 1);
+        float step = spacing / Mathf.Max(4, samplesPerCell);
+        int pointCount = Mathf.Max(
+            2,
+            Mathf.CeilToInt(
+                Mathf.Max(0.001f, bodyEndDistance - tailDistance) / step
+            ) + 1
+        );
 
+        List<Vector3> bodyPoints = new List<Vector3>(pointCount);
         for (int i = 0; i < pointCount; i++)
         {
             float t = i / (float)(pointCount - 1);
-            float distance = Mathf.Lerp(tailDistance, pathBodyEnd, t);
+            float distance = Mathf.Lerp(
+                tailDistance,
+                bodyEndDistance,
+                t
+            );
             bodyPoints.Add(SampleCenterline(distance));
         }
 
         Quaternion headRotation = Quaternion.Euler(
-            0f, 0f, DirectionRotation(headDirection)
+            0f,
+            0f,
+            DirectionRotation(headDirection)
         );
 
-        Vector3 tipPosition;
-        if (Mathf.Abs(currentHeadDistance - originalLength) < 0.0001f)
-        {
-            tipPosition = CellToWorld(path[path.Count - 1]) +
-                          DirectionToVector(headDirection) *
-                          (headTipOffset - headBackwardOffset);
-        }
-        else
-        {
-            tipPosition = SampleCenterline(currentHeadDistance) +
-                          DirectionToVector(headDirection) *
-                          (headTipOffset - headBackwardOffset);
-        }
+        // At rest the arrow-tip anchor is the EXACT world position of the
+        // final grid cell. The sprite is translated from that point by its
+        // actual mesh tip, so the grey grid dot is physically underneath
+        // the visible point of the arrow head.
+        Vector3 tipPosition =
+            Mathf.Abs(currentHeadDistance - originalLength) < 0.0001f
+                ? CellToWorld(path[path.Count - 1]) +
+                  DirectionToVector(headDirection) *
+                  (spacing * HeadTipRuntimeShiftCells)
+                : SampleCenterline(currentHeadDistance);
 
         Vector3 localTipOffset = Vector3.zero;
         Vector3 localRearOffset = Vector3.zero;
 
         if (headRenderer != null && headRenderer.sprite != null)
         {
-            Bounds spriteBounds = headRenderer.sprite.bounds;
-            float scaleX = Mathf.Abs(
-                headObject != null ? headObject.transform.localScale.x : headScale
+            float scale = Mathf.Abs(
+                headObject != null
+                    ? headObject.transform.localScale.x
+                    : headScale
             );
 
-            localTipOffset = new Vector3(spriteBounds.max.x * scaleX, 0f, 0f);
-            localRearOffset = new Vector3(spriteBounds.min.x * scaleX, 0f, 0f);
+            // Do NOT use Sprite.bounds here. Bounds can include transparent
+            // padding around the arrow artwork. That was the reason the
+            // visible arrow tip could sit several pixels away from the grid
+            // point even though the calculated pivot looked correct.
+            //
+            // Sprite.vertices follows the imported sprite mesh, so the
+            // furthest visible mesh vertices are used as the real front/rear
+            // of the arrow head. The front vertex is therefore placed exactly
+            // on the final grid point.
+            GetSpriteHorizontalExtents(
+                headRenderer.sprite,
+                out float spriteMinX,
+                out float spriteMaxX
+            );
+
+            localTipOffset =
+                new Vector3(
+                    spriteMaxX * scale,
+                    0f,
+                    0f
+                );
+
+            localRearOffset =
+                new Vector3(
+                    spriteMinX * scale,
+                    0f,
+                    0f
+                );
         }
 
         Vector3 worldTipOffset = headRotation * localTipOffset;
@@ -577,18 +1162,22 @@ public class ArrowPathController : MonoBehaviour
         Vector3 headPivot = tipPosition - worldTipOffset;
         Vector3 headRearWorld = headPivot + worldRearOffset;
 
-        float bodyWidth = spacing * 0.36f;
-        float overlap = spacing * headBodyOverlap;
+        // Keep the grid point under the actual visible tip and deliberately
+        // let the body enter the rear of the head by a tiny amount. This
+        // removes the hairline gap caused by anti-aliasing/cap rendering.
+        float bodyHeadOverlap = Mathf.Max(
+            headBodyOverlap,
+            spacing * 0.055f
+        );
 
-        Vector3 bodyConnection = headRearWorld -
-                                 DirectionToVector(headDirection) *
-                                 (bodyWidth * 0.5f - overlap);
+        headRearWorld +=
+            DirectionToVector(headDirection) *
+            bodyHeadOverlap;
 
-        if (bodyPoints.Count == 0 ||
-            Vector3.Distance(bodyPoints[bodyPoints.Count - 1], bodyConnection) > 0.0001f)
-        {
-            bodyPoints.Add(bodyConnection);
-        }
+        if (bodyPoints.Count == 0)
+            bodyPoints.Add(headRearWorld);
+        else
+            bodyPoints[bodyPoints.Count - 1] = headRearWorld;
 
         line.positionCount = bodyPoints.Count;
         for (int i = 0; i < bodyPoints.Count; i++)
@@ -596,39 +1185,93 @@ public class ArrowPathController : MonoBehaviour
 
         if (headObject != null)
         {
-            if (headRenderer != null && headRenderer.sprite != null)
-                FitHeadToWorldWidth();
-
+            FitHeadToWorldWidth();
             headObject.transform.rotation = headRotation;
             headObject.transform.position = headPivot;
         }
     }
 
+
     private float GetBodyEndDistance(float currentHeadDistance)
     {
-        if (headRenderer == null || headRenderer.sprite == null || headObject == null)
-            return Mathf.Max(0f, currentHeadDistance - spacing * 0.75f);
-
-        Bounds b = headRenderer.sprite.bounds;
-        float headScaleX = Mathf.Abs(headObject.transform.localScale.x);
-        float headLength = Mathf.Abs(b.max.x - b.min.x) * headScaleX;
-
-        return Mathf.Max(0f, currentHeadDistance - headLength);
+        return Mathf.Max(
+            0f,
+            currentHeadDistance - GetHeadLength()
+        );
     }
+
 
     private float GetHeadLength()
     {
-        if (headRenderer == null || headRenderer.sprite == null)
+        if (
+            headRenderer == null ||
+            headRenderer.sprite == null
+        )
+        {
             return spacing * 0.75f;
+        }
 
-        Bounds b = headRenderer.sprite.bounds;
-        float worldWidth = Mathf.Abs(b.max.x - b.min.x) *
-                           Mathf.Abs(headObject != null ? headObject.transform.localScale.x : headScale);
+        float scale = Mathf.Abs(
+            headObject != null
+                ? headObject.transform.localScale.x
+                : headScale
+        );
 
-        return Mathf.Max(spacing * 0.40f, worldWidth);
+        GetSpriteHorizontalExtents(
+            headRenderer.sprite,
+            out float spriteMinX,
+            out float spriteMaxX
+        );
+
+        float worldWidth =
+            Mathf.Abs(spriteMaxX - spriteMinX) * scale;
+
+        return Mathf.Max(
+            spacing * 0.40f,
+            worldWidth
+        );
     }
 
-    private Vector3 SampleCenterline(float distance)
+    private static void GetSpriteHorizontalExtents(
+        Sprite sprite,
+        out float minX,
+        out float maxX)
+    {
+        minX = 0f;
+        maxX = 0f;
+
+        if (sprite == null)
+            return;
+
+        Vector2[] vertices = sprite.vertices;
+
+        if (vertices == null || vertices.Length == 0)
+        {
+            Bounds bounds = sprite.bounds;
+            minX = bounds.min.x;
+            maxX = bounds.max.x;
+            return;
+        }
+
+        minX = float.PositiveInfinity;
+        maxX = float.NegativeInfinity;
+
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            minX = Mathf.Min(minX, vertices[i].x);
+            maxX = Mathf.Max(maxX, vertices[i].x);
+        }
+
+        if (float.IsInfinity(minX) || float.IsInfinity(maxX))
+        {
+            Bounds bounds = sprite.bounds;
+            minX = bounds.min.x;
+            maxX = bounds.max.x;
+        }
+    }
+
+    private Vector3 SampleCenterline(
+        float distance)
     {
         if (centerline.Count == 0)
             return transform.position;
@@ -637,65 +1280,130 @@ public class ArrowPathController : MonoBehaviour
             return centerline[0];
 
         if (distance >= totalLength)
-            return centerline[centerline.Count - 1];
+        {
+            return centerline[
+                centerline.Count - 1
+            ];
+        }
 
         int low = 0;
-        int high = distances.Count - 1;
+        int high =
+            distances.Count - 1;
 
         while (low <= high)
         {
-            int mid = (low + high) / 2;
-            if (distances[mid] < distance)
-                low = mid + 1;
+            int mid =
+                (low + high) / 2;
+
+            if (
+                distances[mid] <
+                distance
+            )
+            {
+                low =
+                    mid + 1;
+            }
             else
-                high = mid - 1;
+            {
+                high =
+                    mid - 1;
+            }
         }
 
-        int upper = Mathf.Clamp(low, 1, distances.Count - 1);
-        int lower = upper - 1;
-        float t = Mathf.InverseLerp(distances[lower], distances[upper], distance);
+        int upper =
+            Mathf.Clamp(
+                low,
+                1,
+                distances.Count - 1
+            );
 
-        return Vector3.Lerp(centerline[lower], centerline[upper], t);
-    }
+        int lower =
+            upper - 1;
 
-    private Vector3 CellToWorld(Vector2Int cell)
-    {
-        if (board != null)
-        {
-            return board.CellToWorld(cell) + new Vector3(0f, 0f, -0.15f);
-        }
+        float t =
+            Mathf.InverseLerp(
+                distances[lower],
+                distances[upper],
+                distance
+            );
 
-        float offsetX = (gridWidth - 1) * spacing * 0.5f;
-        float offsetY = (gridHeight - 1) * spacing * 0.5f;
-
-        return transform.position + new Vector3(
-            cell.x * spacing - offsetX,
-            cell.y * spacing - offsetY,
-            -0.15f
+        return Vector3.Lerp(
+            centerline[lower],
+            centerline[upper],
+            t
         );
     }
 
-    private Vector3 DirectionToVector(Direction direction)
+    private Vector3 CellToWorld(
+        Vector2Int cell)
+    {
+        if (board != null)
+        {
+            return board.CellToWorld(cell) +
+                   new Vector3(
+                       0f,
+                       0f,
+                       -0.15f
+                   );
+        }
+
+        float offsetX =
+            (gridWidth - 1) *
+            spacing *
+            0.5f;
+
+        float offsetY =
+            (gridHeight - 1) *
+            spacing *
+            0.5f;
+
+        return transform.position +
+               new Vector3(
+                   cell.x * spacing -
+                   offsetX,
+                   cell.y * spacing -
+                   offsetY,
+                   -0.15f
+               );
+    }
+
+    private Vector3 DirectionToVector(
+        Direction direction)
     {
         switch (direction)
         {
-            case Direction.Right: return Vector3.right;
-            case Direction.Left: return Vector3.left;
-            case Direction.Up: return Vector3.up;
-            case Direction.Down: return Vector3.down;
+            case Direction.Right:
+                return Vector3.right;
+
+            case Direction.Left:
+                return Vector3.left;
+
+            case Direction.Up:
+                return Vector3.up;
+
+            case Direction.Down:
+                return Vector3.down;
         }
 
         return Vector3.right;
     }
 
-    private float DirectionRotation(Direction direction)
+    private float DirectionRotation(
+        Direction direction)
     {
         switch (direction)
         {
-            case Direction.Right: return 0f;
-            case Direction.Up: return 90f;
-            case Direction.Left: return 180f;
-            case Direction.Down: return -90f;
+            case Direction.Right:
+                return 0f;
+
+            case Direction.Up:
+                return 90f;
+
+            case Direction.Left:
+                return 180f;
+
+            case Direction.Down:
+                return -90f;
         }
 
         return 0f;
@@ -703,10 +1411,16 @@ public class ArrowPathController : MonoBehaviour
 
     private void ClearHitAreas()
     {
-        for (int i = 0; i < hitAreas.Count; i++)
+        for (
+            int i = 0;
+            i < hitAreas.Count;
+            i++
+        )
         {
             if (hitAreas[i] != null)
-                Destroy(hitAreas[i]);
+                Destroy(
+                    hitAreas[i]
+                );
         }
 
         hitAreas.Clear();
@@ -715,13 +1429,14 @@ public class ArrowPathController : MonoBehaviour
     public ArrowData GetData()
     {
         if (arrowData == null)
-        {
-            arrowData = new ArrowData();
-        }
+            arrowData =
+                new ArrowData();
 
         arrowData.path =
             path != null
-                ? new List<Vector2Int>(path)
+                ? new List<Vector2Int>(
+                    path
+                )
                 : new List<Vector2Int>();
 
         arrowData.headDirection =
@@ -740,32 +1455,58 @@ public class ArrowPathController : MonoBehaviour
         return headDirection;
     }
 
+    public Vector3 GetHeadDirectionWorld()
+    {
+        return DirectionToVector(headDirection);
+    }
+
     public bool IsEscaping()
     {
         return escaping;
     }
 
-    public void SetHeadSprite(Sprite sprite)
+    public bool IsPlayingBlockedMotion()
     {
-        headSprite = sprite;
-        if (headRenderer != null)
-            headRenderer.sprite = sprite;
+        return blockedMotion;
     }
 
-    public void SetColor(Color color)
+    public void SetHeadSprite(
+        Sprite sprite)
     {
-        arrowColor = color;
+        headSprite =
+            sprite;
+
+        if (headRenderer != null)
+            headRenderer.sprite =
+                sprite;
+    }
+
+    public void SetColor(
+        Color color)
+    {
+        arrowColor =
+            color;
+
+        Color visualColor = selectedVisual && highlightOnClick
+            ? selectedArrowColor
+            : color;
 
         if (line != null)
         {
-            line.startColor = color;
-            line.endColor = color;
+            line.startColor =
+                visualColor;
+
+            line.endColor =
+                visualColor;
         }
 
         if (headRenderer != null)
-            headRenderer.color = color;
+            headRenderer.color =
+                visualColor;
     }
 }
+
+
 
 public class ArrowHitArea : MonoBehaviour
 {
@@ -784,5 +1525,6 @@ public class ArrowHitArea : MonoBehaviour
     private void OnMouseDown()
     {
         // Pointer input is handled by ArrowPathController directly.
+        // This component only keeps a reference to its owning arrow.
     }
 }

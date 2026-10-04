@@ -62,6 +62,7 @@ MonoBehaviour:
     headSprite: {fileID: 0}
     arrowColor: {r: 0, g: 0, b: 0, a: 1}
   headDirection: 3
+  headSpritePointsRight: 1
   lineWidth: 0.14
   arrowColor: {r: 0, g: 0, b: 0, a: 1}
   headSprite: {fileID: 21300000, guid: 8f7194843da23c94cb05be58b09cbbe2, type: 3}
@@ -75,7 +76,7 @@ MonoBehaviour:
   hitSpacing: 0.1
   hitRadius: 0.17
   headHitPadding: 0.08
-  moveSpeed: 7
+  moveSpeed: 15
   extraExitDistance: 3
   headRenderer: {fileID: 7667043515124065918}
 --- !u!212 &7667043515124065918
