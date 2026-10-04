@@ -76,7 +76,10 @@ public class LevelGeneratorEditor : Editor
         int height = Mathf.Max(4, level.height);
 
         int maximumArrowCount =
-            Mathf.Max(1, (width * height) / 2);
+            Mathf.Min(
+                63,
+                Mathf.Max(1, (width * height) / 2)
+            );
 
         int arrowCount = Mathf.Clamp(
             level.arrowCount,
@@ -119,7 +122,10 @@ public class LevelGeneratorEditor : Editor
                     0.80f
                 );
 
-        for (int attempt = 0; attempt < MaxGenerationAttempts; attempt++)
+        int maxGenerationAttempts =
+            Mathf.Clamp(level.shapeIterations, 100, MaxGenerationAttempts);
+
+        for (int attempt = 0; attempt < maxGenerationAttempts; attempt++)
         {
             List<GeneratedArrow> candidate =
                 GenerateCandidateLevel(
@@ -784,13 +790,18 @@ public class LevelGeneratorEditor : Editor
 
         for (int i = 0; i < generated.Count; i++)
         {
+            List<Vector2Int> path =
+                new List<Vector2Int>(generated[i].path);
+
+            Vector2Int delta =
+                path[path.Count - 1] - path[path.Count - 2];
+
             level.arrows.Add(
                 new ArrowData
                 {
-                    path =
-                        new List<Vector2Int>(generated[i].path),
+                    path = path,
                     headDirection =
-                        ArrowPathController.Direction.Right,
+                        DirectionFromDelta(delta),
                     headSprite =
                         level.defaultHeadSprite,
                     arrowColor =
@@ -802,6 +813,21 @@ public class LevelGeneratorEditor : Editor
         EditorUtility.SetDirty(level);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
+    }
+
+    private static ArrowPathController.Direction DirectionFromDelta(
+        Vector2Int delta)
+    {
+        if (delta.x > 0)
+            return ArrowPathController.Direction.Right;
+
+        if (delta.x < 0)
+            return ArrowPathController.Direction.Left;
+
+        if (delta.y > 0)
+            return ArrowPathController.Direction.Up;
+
+        return ArrowPathController.Direction.Down;
     }
 
     private static void GetDifficultyProfile(
