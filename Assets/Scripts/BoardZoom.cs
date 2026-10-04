@@ -10,7 +10,7 @@ public class BoardPanZoom : MonoBehaviour
 
     [Header("Zoom")]
     [SerializeField] private float minOrthographicSize = 2.2f;
-    [SerializeField] private float maxOrthographicSize = 9f;
+    [SerializeField] private float maxOrthographicSize = 12f;
     [SerializeField] private float mouseWheelZoomSpeed = 0.9f;
     [SerializeField] private float pinchZoomSpeed = 0.012f;
     [SerializeField] private float fitPadding = 0.35f;
