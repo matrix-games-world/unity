@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1244e506989a82c4a973af006bbfb612, type: 3}
+  m_Name: Level_01
+  m_EditorClassIdentifier: Assembly-CSharp::LevelData
+  width: 24
+  height: 24
+  spacing: 0.5
+  lives: 3
+  arrowCount: 20
+  difficulty: 0
+  seed: 303126252
+  minimumSeparation: 1
+  headClearanceCells: 2
+  shapeIterations: 800
+  targetCoverage: 0.62
+  fillEntireBoard: 1
+  requireSolvable: 1
+  enforceDifficulty: 1
+  defaultArrowPrefab: {fileID: 8052503634009987049, guid: 470abe4009124014c8fff5b138393b8e, type: 3}
+  defaultHeadSprite: {fileID: 21300000, guid: 8f7194843da23c94cb05be58b09cbbe2, type: 3}
+  defaultArrowColor: {r: 0, g: 0, b: 0, a: 1}
+  arrows: []
